@@ -3,7 +3,7 @@ from app.api.v1 import router as api_v1_router
 from fastapi.middleware.cors import CORSMiddleware
 
 
-app = FastAPI(title="My FastAPI Project", version="1.0.0")
+app = FastAPI(title="FastAPI|WebScraper", version="1.0.0")
 
 # Allow all origins, methods, and headers
 app.add_middleware(

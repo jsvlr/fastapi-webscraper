@@ -1,30 +1,32 @@
-from fastapi import HTTPException, APIRouter, Query
-import app.models.weather as model
+from fastapi import HTTPException, APIRouter
 from bs4 import BeautifulSoup
-from typing_extensions import Annotated
 from datetime import datetime as dt
-import bs4
-import requests
-import re
+from dotenv import load_dotenv
+from app.models import weather as model
+import requests, re, os
+
+
+# load variables from .env files
+load_dotenv()
 
 router = APIRouter()
-BASE_URL = "https://www.pagasa.dost.gov.ph"
+BASE_URL = os.getenv("WEATHER_BASE_URL")
 
 def getTimeNow() -> str:
     timeNow = dt.now()
     month:str = "0" + str(timeNow.month) if len(str(timeNow.month)) == 1 else str(timeNow.month)
     day:str = "0" + str(timeNow.day) if len(str(timeNow.day)) == 1 else str(timeNow.day)
-    time:str = f"{month}-{day}-{timeNow.year}"
+    time:str = f"{timeNow.year}-{month}-{day}"
 
     return time
 
 def extractDigits(digitString:str) -> float|None:
+   
+    # get the numbers or integers in a string (with decimal point ".")
     pattern =  r'-?\d+\.\d+|-?\d+'
     digit = re.search(pattern=pattern, string=digitString)
-
     if digit:
         return float(digit.group())
-    
     return None
 
 
@@ -35,51 +37,37 @@ async def dailyTemperature() -> model.MainResponse:
         URL:str = f"{BASE_URL}/weather/low-high-temperature"
         content = requests.get(URL)
         scraper = BeautifulSoup(content.text, "html.parser")
-        table:list = scraper.find_all("table", {"class":"table"})
+
+        # get all tables
+        tables:list = scraper.find_all("table", {"class":"table"})
 
         # Heading
         header:str = scraper.find("div",{"id":"daily-weather-forecast"}).text.strip()
         
-        # Table for low temperature
-        lowestTemp:list = table[0] 
-
-        # Table for high temperature
-        highestTemp:list = table[1]
-
-        def getRecords(table:bs4.element.Tag) -> list[dict]:
-            content = []
+        datas = []
+        for table in tables:
             tbody = table.find("tbody")
             records = tbody.find_all("tr")
-            
+        
             for row in records:
                 cells = row.find_all("td")
-                obj:dict = {}
-                station = cells[0].text.strip()
+                place = cells[0].text.strip()
+                # ensure the row has two columns
                 if len(cells) > 1:
-                    # the "\u00b0" remove the degree icon and "[:-1]" to remove the C on end of each string
-                    # temperature = float(cells[1].text.strip().replace("\u00b0", "")[:-1])
                     temperature = extractDigits(cells[1].text.strip())
-                    obj = {
-                        "station": station,
-                        "temperature": temperature
-                    }
-                else:
-                    obj =  station
-                content.append(obj)
-            return content
+                    data = model.StationTemperature(
+                        place=place,
+                        temperature=temperature
+                    )
+                    datas.append(data)
 
-        lowTemperatureData = getRecords(lowestTemp)
-        highTemperatureData = getRecords(highestTemp)
         time = getTimeNow()
 
         response = model.ResponseData(
             header=header,
             time_issued=f"{time}",
             valid_until = f"{time}",
-            datas=model.TemperatureData(
-                low_table=lowTemperatureData,
-                high_table=highTemperatureData
-            )
+            locations=datas
         )
 
         return model.MainResponse(response=response)
@@ -88,7 +76,6 @@ async def dailyTemperature() -> model.MainResponse:
         print(f"ERROR: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
      
-
 @router.get("/asian-cities/", tags=['asian-cities'], response_model=model.MainResponse)
 async def asiaWeather() -> model.MainResponse:
     try:
@@ -118,11 +105,9 @@ async def asiaWeather() -> model.MainResponse:
             data = model.AsianCitiesData(
                 country=country,
                 city=city,
-                weather=description,
-                temperature=model.AsianTemperatureData(
-                    high=highTemperature,
-                    low=lowTemperature
-                )
+                temperature_description=description,
+                temperature_high=highTemperature,
+                temperature_low=lowTemperature
             )
 
             datas.append(data)
@@ -131,7 +116,7 @@ async def asiaWeather() -> model.MainResponse:
             header="Asian Cities Weather Forecast",
             time_issued=timeIssued,
             valid_until=validUntil,
-            datas= datas
+            locations= datas
         )
 
         return model.MainResponse(response=response)
@@ -139,9 +124,7 @@ async def asiaWeather() -> model.MainResponse:
     except Exception as e:
         print(f"ERROR: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
-
-
-
+ 
 @router.get("/tourist-areas/", tags=["tourist-areas"], response_model=model.MainResponse)
 async def touristAreasWeather() -> model.MainResponse:
     try:
@@ -179,6 +162,8 @@ async def touristAreasWeather() -> model.MainResponse:
         for row in rows:
             columns = row.find_all("td")
             destination = columns[0].text.strip()
+            place = destination[destination.index(")") + 1:]
+            areas = destination[1:destination.index(")")]
             dates = columns[1:]
             temperature = []
 
@@ -190,16 +175,20 @@ async def touristAreasWeather() -> model.MainResponse:
                 tempe = model.TouristAreasDates(
                     day=dayDateContainer[index]['day'],
                     date=dayDateContainer[index]['date'],
-                    temperature=model.TouristAreasTemperature(
-                        description=description,
-                        high=high,
-                        low=low
-                    )
+                    # temperature=model.TouristAreasTemperature(
+                    #     description=description,
+                    #     high=high,
+                    #     low=low
+                    # )
+                    temperature_description=description,
+                    temperature_high=high,
+                    temperature_low=low
                 )
                 temperature.append(tempe)
 
             data = model.TouristAreasData(
-                destination=destination,
+                place=place,
+                areas=areas,
                 dates=temperature
             )
             datas.append(data)
@@ -208,7 +197,7 @@ async def touristAreasWeather() -> model.MainResponse:
             header=header,
             time_issued=timeIssued,
             valid_until=validUntil,
-            datas=datas
+            locations=datas
         )
         mainResponse = model.MainResponse(response = response)
 

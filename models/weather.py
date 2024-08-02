@@ -2,24 +2,18 @@ from pydantic import BaseModel
 from typing import List,Union
 
 
-
+class MainResponse(BaseModel):
+    response: "ResponseData"
 class ResponseData(BaseModel):
     header: str
     time_issued: str
     valid_until: str
-    datas: Union["TemperatureData", List["AsianCitiesData"], List["TouristAreasData"]]
-
-class MainResponse(BaseModel):
-    response: ResponseData
+    locations: Union[List["StationTemperature"], List["AsianCitiesData"], List["TouristAreasData"]]
 
 # For daily temperature
 class StationTemperature(BaseModel):
-    station:str
+    place:str
     temperature:Union[float, None]
-
-class TemperatureData(BaseModel):
-    low_table: Union[List[StationTemperature], List]
-    high_table: Union[List[StationTemperature], List]
 
 ###################################
 
@@ -31,24 +25,23 @@ class AsianTemperatureData(BaseModel):
 class AsianCitiesData(BaseModel):
     country:str
     city:str
-    weather:str
-    temperature: AsianTemperatureData
+    temperature_description:str
+    temperature_high:Union[float, None]
+    temperature_low:Union[float, None]
 
 ################################
 
 # touristAreasWeather Model
 class TouristAreasData(BaseModel):
-    destination:str
+    place:str
+    areas:str
     dates:List["TouristAreasDates"]
 
 class TouristAreasDates(BaseModel):
     day:str
     date:str
-    temperature:"TouristAreasTemperature"
-
-class TouristAreasTemperature(BaseModel):
-    description:str
-    high:Union[float, None]
-    low:Union[float, None]
+    temperature_description:str
+    temperature_high:Union[float, None]
+    temperature_low:Union[float, None]
 
 ####################################

@@ -8,7 +8,7 @@ class ResponseData(BaseModel):
     header: str
     time_issued: str
     valid_until: str
-    locations: Union[List["StationTemperature"], List["AsianCitiesData"], List["TouristAreasData"]]
+    locations: Union[List["StationTemperature"], List["AsianCitiesData"], List["TouristAreasData"], None]
 
 # For daily temperature
 class StationTemperature(BaseModel):

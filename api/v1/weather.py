@@ -5,20 +5,27 @@ from dotenv import load_dotenv
 from app.models import weather as model
 import requests, re, os
 
-
 # load variables from .env files
 load_dotenv()
 
 router = APIRouter()
 BASE_URL = os.getenv("WEATHER_BASE_URL")
 
+@router.on_event("startup")
+async def start():
+    print("Weather API started")
+
+@router.on_event("shutdown")
+async def end():
+    print("Weather API shutdown")
+
 def getTimeNow() -> str:
     timeNow = dt.now()
-    month:str = "0" + str(timeNow.month) if len(str(timeNow.month)) == 1 else str(timeNow.month)
-    day:str = "0" + str(timeNow.day) if len(str(timeNow.day)) == 1 else str(timeNow.day)
-    time:str = f"{timeNow.year}-{month}-{day}"
+    minute:str =f"0{timeNow.minute}" if timeNow.minute < 10 else timeNow.minute
+    hour:str = f"{timeNow.hour - 12}:{minute} PM" if int(timeNow.hour) > 12 else f"{timeNow.hour} : {minute} AM"
+    fulltime:str = f"Issued at {hour} today, {timeNow.strftime("%d %B %Y")} "
 
-    return time
+    return fulltime
 
 def extractDigits(digitString:str) -> float|None:
    
@@ -43,7 +50,7 @@ async def dailyTemperature() -> model.MainResponse:
 
         # Heading
         header:str = scraper.find("div",{"id":"daily-weather-forecast"}).text.strip()
-        
+
         datas = []
         for table in tables:
             tbody = table.find("tbody")
@@ -66,7 +73,7 @@ async def dailyTemperature() -> model.MainResponse:
         response = model.ResponseData(
             header=header,
             time_issued=f"{time}",
-            valid_until = f"{time}",
+            valid_until = "n/a",
             locations=datas
         )
 
@@ -175,11 +182,6 @@ async def touristAreasWeather() -> model.MainResponse:
                 tempe = model.TouristAreasDates(
                     day=dayDateContainer[index]['day'],
                     date=dayDateContainer[index]['date'],
-                    # temperature=model.TouristAreasTemperature(
-                    #     description=description,
-                    #     high=high,
-                    #     low=low
-                    # )
                     temperature_description=description,
                     temperature_high=high,
                     temperature_low=low
@@ -206,3 +208,29 @@ async def touristAreasWeather() -> model.MainResponse:
     except Exception as e:
         print(f"ERROR: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@router.get("/selected-cites/")
+async def selectedCities():
+    try:
+        URL = f"{BASE_URL}/weather/weather-outlook-selected-philippine-cities"
+        content = requests.get(URL)
+        scraper = BeautifulSoup(content.text, "html.parser")
+
+        header = scraper.find("div", {'id':"weather-outlook-selected-philippine-cities"}).text.strip()
+        time = scraper.find("h5").text.strip()
+        panels = scraper.find_all("div", {'class':"panel-pagasa"})
+        cities = []
+        # for panel in panels:
+        #     city = panel.find("h4", {'class':"panel-title"})
+        #     cities.add(city)
+        
+        response = model.ResponseData(
+            header=header,
+            time_issued=time,
+            valid_until=time,
+            locations=None
+        )
+        return model.MainResponse(response=response)
+    except Exception as e:
+        print(f"ERROR: {e}")
+        
